@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "나무 정원"
+description = "Three.js 기반 나무 성장 시뮬레이션 앱. 물주기, 비료주기, 날씨 변화 기능을 포함하며 나무가 여러 단계로 성장하는 시스템. 기상청 공공데이터 API와 연동 가능한 날씨 시스템 내장."
+version = "1.0.0"
+id = "artifacts/tree-garden"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20101
+
+[services.development]
+run = "pnpm --filter @workspace/tree-garden run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/tree-garden", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/tree-garden/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20101"
+BASE_PATH = "/"
