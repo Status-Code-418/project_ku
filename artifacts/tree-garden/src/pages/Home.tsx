@@ -1,6 +1,7 @@
 import { TreeScene } from '../components/TreeScene';
 import { SidePanel } from '../components/SidePanel';
 import { WeatherPanel } from '../components/WeatherPanel';
+import { HomeNameBadge } from '../components/HomeNameBadge';
 import { useGardenState } from '../hooks/useGardenState';
 
 export default function Home() {
@@ -17,11 +18,15 @@ export default function Home() {
         onWater={waterTree} 
         onFertilize={useFertilizer} 
       />
-      
-      <WeatherPanel 
-        weather={state.weather} 
-        onWeatherChange={setWeather} 
-      />
+
+      {/* Top-right panel stack */}
+      <div className="fixed right-6 top-6 flex flex-col items-end gap-2 z-10">
+        <HomeNameBadge />
+        <WeatherPanel 
+          weather={state.weather} 
+          onWeatherChange={setWeather} 
+        />
+      </div>
     </div>
   );
 }

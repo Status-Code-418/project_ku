@@ -28,7 +28,7 @@ export function WeatherPanel({ weather, onWeatherChange }: WeatherPanelProps) {
     <motion.div 
       initial={{ y: -50, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="fixed right-6 top-6 glass rounded-2xl p-3 flex items-center gap-4 shadow-lg z-10 text-foreground"
+      className="glass rounded-2xl p-3 flex items-center gap-4 shadow-lg text-foreground"
     >
       <div className="flex items-center gap-3 pl-2 pr-1">
         <Icon className={`w-5 h-5 ${COLORS[weather]}`} />
