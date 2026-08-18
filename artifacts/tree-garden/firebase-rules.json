@@ -1,0 +1,46 @@
+{
+  "rules": {
+
+    // ── home ─────────────────────────────────────────────────────────────────
+    // HomeNameBadge가 비로그인 상태에서도 읽어야 하므로 공개 읽기.
+    // 값은 Firebase 콘솔에서만 관리자가 직접 수정.
+    "home": {
+      ".read": true,
+      ".write": false
+    },
+
+    // ── playdata ─────────────────────────────────────────────────────────────
+    // 로그인한 본인(auth.uid === $uid)만 자신의 데이터에 접근 가능.
+    "playdata": {
+      "$uid": {
+        ".read":  "auth !== null && auth.uid === $uid",
+        ".write": "auth !== null && auth.uid === $uid",
+
+        "stats": {
+          // joinedAt: 최초 기록 이후 변경 불가 (write-once)
+          // .validate 는 .write 허용 후 데이터 유효성을 검사.
+          "joinedAt": {
+            ".validate": "!data.exists() || data.val() === newData.val()"
+          }
+        }
+      }
+    },
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // AuthContext 의 upsertProfile 이 Users/{uid}/profile 에 쓰므로 허용.
+    "Users": {
+      "$uid": {
+        ".read":  "auth !== null && auth.uid === $uid",
+        ".write": "auth !== null && auth.uid === $uid",
+
+        "profile": {
+          // createdAt: 최초 가입 시각 — 이후 변경 불가 (write-once)
+          "createdAt": {
+            ".validate": "!data.exists() || data.val() === newData.val()"
+          }
+        }
+      }
+    }
+
+  }
+}
