@@ -3,15 +3,18 @@ import { SidePanel } from '../components/SidePanel';
 import { WeatherPanel } from '../components/WeatherPanel';
 import { HomeNameBadge } from '../components/HomeNameBadge';
 import { UserBadge } from '../components/UserBadge';
+import { LoginPromptBanner } from '../components/LoginPromptBanner';
 import { useGardenState } from '../hooks/useGardenState';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Home() {
-  const { user } = useAuth();
-  const { state, ready, waterTree, useFertilizer, setWeather } = useGardenState(user!.uid);
+  const { user, loading: authLoading } = useAuth();
+  const { state, ready, waterTree, useFertilizer, setWeather } = useGardenState(
+    user?.uid ?? null,
+  );
 
-  // Firebase에서 상태 로드 전 간단한 로딩 오버레이
-  if (!ready) {
+  // Auth 또는 garden 상태 로딩 중
+  if (authLoading || !ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <span className="text-5xl animate-pulse">🌱</span>
@@ -40,6 +43,9 @@ export default function Home() {
           onWeatherChange={setWeather}
         />
       </div>
+
+      {/* 비로그인 로그인 유도 배너 */}
+      {!user && <LoginPromptBanner />}
     </div>
   );
 }

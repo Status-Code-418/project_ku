@@ -12,6 +12,9 @@ import {
   signInAnonymously as fbSignInAnonymously,
   signOut as fbSignOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
 } from 'firebase/auth';
 import { ref, update, get } from 'firebase/database';
 import { auth, db } from '../lib/firebase';
@@ -22,6 +25,8 @@ interface AuthContextType {
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInAnonymously: () => Promise<void>;
+  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -76,13 +81,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await upsertProfile(result.user);
   };
 
+  const signUpWithEmail = async (email: string, password: string, displayName: string) => {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(result.user, { displayName });
+    await upsertProfile(result.user);
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    await upsertProfile(result.user);
+  };
+
   const signOut = async () => {
     await fbSignOut(auth);
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, signInWithGoogle, signInAnonymously, signOut }}
+      value={{ user, loading, signInWithGoogle, signInAnonymously, signUpWithEmail, signInWithEmail, signOut }}
     >
       {children}
     </AuthContext.Provider>

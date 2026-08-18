@@ -28,128 +28,148 @@ const DEFAULT_STATE: GardenState = {
   lastSaved: Date.now(),
 };
 
+const LOCAL_KEY = 'tree-garden-state';
+
+// ─── 공통 수분 감소 / 비료 만료 계산 ───────────────────
+function applyPassiveEffects(data: GardenState): GardenState {
+  const hoursPassed = (Date.now() - data.lastSaved) / (1000 * 60 * 60);
+  const result = { ...data };
+  result.waterLevel = Math.max(0, data.waterLevel - Math.floor(hoursPassed * 5));
+  if (data.fertilizerActive) {
+    const fertHours = (Date.now() - data.fertilizerLastUsed) / (1000 * 60 * 60);
+    if (fertHours >= 24) result.fertilizerActive = false;
+  }
+  result.lastSaved = Date.now();
+  return result;
+}
+
 // ─── hook ────────────────────────────────────────────────
-export function useGardenState(uid: string) {
+// uid가 있으면 Firebase, 없으면 localStorage 사용
+export function useGardenState(uid?: string | null) {
   const [state, setState] = useState<GardenState>(DEFAULT_STATE);
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // ── Firebase 경로 ─────────────────────────────────────
-  const gardenPath = `Users/${uid}/garden`;
+  const isFirebase = Boolean(uid);
 
   // ── 초기 로드 ─────────────────────────────────────────
   useEffect(() => {
     setReady(false);
-    const gardenRef = ref(db, gardenPath);
 
-    get(gardenRef).then((snap) => {
-      if (snap.exists()) {
-        const data = snap.val() as GardenState;
-
-        // 오프라인 시간 동안 수분 감소 계산
-        const hoursPassed = (Date.now() - data.lastSaved) / (1000 * 60 * 60);
-        data.waterLevel = Math.max(0, data.waterLevel - Math.floor(hoursPassed * 5));
-
-        // 비료 만료 체크 (24h)
-        if (data.fertilizerActive) {
-          const fertHours = (Date.now() - data.fertilizerLastUsed) / (1000 * 60 * 60);
-          if (fertHours >= 24) data.fertilizerActive = false;
+    if (isFirebase && uid) {
+      // Firebase 로드
+      get(ref(db, `Users/${uid}/garden`)).then((snap) => {
+        if (snap.exists()) {
+          const loaded = applyPassiveEffects(snap.val() as GardenState);
+          setState(loaded);
+          update(ref(db, `Users/${uid}/garden`), {
+            waterLevel: loaded.waterLevel,
+            fertilizerActive: loaded.fertilizerActive,
+            lastSaved: loaded.lastSaved,
+          });
+        } else {
+          const initial = { ...DEFAULT_STATE, lastSaved: Date.now() };
+          set(ref(db, `Users/${uid}/garden`), initial);
+          setState(initial);
         }
-
-        data.lastSaved = Date.now();
-        setState(data);
-        update(gardenRef, { waterLevel: data.waterLevel, fertilizerActive: data.fertilizerActive, lastSaved: data.lastSaved });
-      } else {
-        // 첫 로그인 — 기본 상태로 초기화
-        const initial = { ...DEFAULT_STATE, lastSaved: Date.now() };
-        set(gardenRef, initial);
-        setState(initial);
+        setReady(true);
+      });
+    } else {
+      // localStorage 로드 (비로그인 게스트)
+      try {
+        const stored = localStorage.getItem(LOCAL_KEY);
+        if (stored) {
+          const parsed = applyPassiveEffects(JSON.parse(stored) as GardenState);
+          localStorage.setItem(LOCAL_KEY, JSON.stringify(parsed));
+          setState(parsed);
+        }
+      } catch {
+        /* ignore */
       }
       setReady(true);
-    });
-  }, [uid]);
+    }
+  }, [uid, isFirebase]);
 
-  // ── Firebase 쓰기 헬퍼 ───────────────────────────────
+  // ── 저장 헬퍼 ────────────────────────────────────────
   const persist = useCallback(
     (partial: Partial<GardenState>) => {
-      update(ref(db, gardenPath), { ...partial, lastSaved: Date.now() });
+      if (isFirebase && uid) {
+        update(ref(db, `Users/${uid}/garden`), { ...partial, lastSaved: Date.now() });
+      } else {
+        // localStorage: setState 콜백에서 최신 상태를 받아 저장
+        setState((prev) => {
+          const next = { ...prev, ...partial, lastSaved: Date.now() };
+          localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
+          return next;
+        });
+      }
     },
-    [gardenPath],
+    [uid, isFirebase],
   );
 
-  // ── 상태 변경 + 저장 ─────────────────────────────────
   const saveState = useCallback(
     (partial: Partial<GardenState>) => {
-      setState((prev) => {
-        const next = { ...prev, ...partial, lastSaved: Date.now() };
+      if (isFirebase) {
+        setState((prev) => ({ ...prev, ...partial, lastSaved: Date.now() }));
         persist(partial);
-        return next;
-      });
+      } else {
+        persist(partial); // localStorage 경로에서 setState 처리
+      }
     },
-    [persist],
+    [isFirebase, persist],
   );
 
-  // ── 수분 자동 감소 (앱 열려있는 동안, 12분마다 -1) ──
+  // ── 수분 자동 감소 ────────────────────────────────────
   useEffect(() => {
     if (!ready) return;
     const id = setInterval(() => {
       setState((prev) => {
         if (prev.waterLevel <= 0) return prev;
         const next = { ...prev, waterLevel: prev.waterLevel - 1, lastSaved: Date.now() };
-        persist({ waterLevel: next.waterLevel });
+        if (isFirebase && uid) {
+          update(ref(db, `Users/${uid}/garden`), { waterLevel: next.waterLevel, lastSaved: next.lastSaved });
+        } else {
+          localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
+        }
         return next;
       });
     }, 12 * 60 * 1000);
     return () => clearInterval(id);
-  }, [ready, persist]);
+  }, [ready, uid, isFirebase]);
 
   // ── 물주기 ────────────────────────────────────────────
   const waterTree = useCallback(() => {
     const now = Date.now();
     const s = stateRef.current;
-    const canWater =
-      s.waterLastUsed === 0 || now - s.waterLastUsed >= 4 * 60 * 60 * 1000;
-
+    const canWater = s.waterLastUsed === 0 || now - s.waterLastUsed >= 4 * 60 * 60 * 1000;
     if (!canWater) return;
 
     let xpGain = 8;
     if (s.fertilizerActive) xpGain *= 2;
-
     let newXP = s.growthXP + xpGain;
     let newStage = s.growthStage;
 
     if (newXP >= 100 && s.growthStage < 4) {
       newStage = (s.growthStage + 1) as GrowthStage;
-      newXP = newXP - 100;
+      newXP -= 100;
     } else if (s.growthStage === 4) {
       newXP = Math.min(100, newXP);
     }
 
-    saveState({
-      waterLevel: Math.min(100, s.waterLevel + 20),
-      waterLastUsed: now,
-      growthXP: newXP,
-      growthStage: newStage,
-    });
+    saveState({ waterLevel: Math.min(100, s.waterLevel + 20), waterLastUsed: now, growthXP: newXP, growthStage: newStage });
   }, [saveState]);
 
   // ── 비료 ──────────────────────────────────────────────
   const useFertilizer = useCallback(() => {
     const now = Date.now();
     const s = stateRef.current;
-    const canFert =
-      s.fertilizerLastUsed === 0 ||
-      now - s.fertilizerLastUsed >= 5 * 24 * 60 * 60 * 1000;
-
+    const canFert = s.fertilizerLastUsed === 0 || now - s.fertilizerLastUsed >= 5 * 24 * 60 * 60 * 1000;
     if (canFert) saveState({ fertilizerActive: true, fertilizerLastUsed: now });
   }, [saveState]);
 
   // ── 날씨 ──────────────────────────────────────────────
-  const setWeather = useCallback(
-    (weather: WeatherType) => saveState({ weather }),
-    [saveState],
-  );
+  const setWeather = useCallback((weather: WeatherType) => saveState({ weather }), [saveState]);
 
   return { state, ready, waterTree, useFertilizer, setWeather };
 }

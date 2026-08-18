@@ -17,7 +17,7 @@ import {
 
 const queryClient = new QueryClient();
 
-// 로그인 필요한 경로를 보호하는 래퍼
+// /admin 전용 보호 래퍼
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   const [, navigate] = useLocation();
@@ -33,7 +33,6 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       </div>
     );
   }
-
   if (!user) return null;
   return <Component />;
 }
@@ -43,10 +42,8 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/login" component={Login} />
-        <Route
-          path="/"
-          component={() => <ProtectedRoute component={Home} />}
-        />
+        {/* 홈은 비로그인도 접근 가능 */}
+        <Route path="/" component={Home} />
         <Route
           path="/admin"
           component={() => <ProtectedRoute component={Admin} />}
